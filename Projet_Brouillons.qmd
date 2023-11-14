@@ -1,0 +1,127 @@
+---
+title: "Analyse des Variations de l'Emploi en Europe (1990-2023)"
+toc: true
+toc_depth: 2
+format:
+  html: 
+    output-file: devoir.html
+#  html+solution:
+#    output-file: devoir-solution.html
+embed-resources: true
+execute:
+  echo: true
+  eval: true
+  collapse: true
+callout-appearance: simple
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+to_be_loaded <- c("devtools",
+                  "tidyverse", 
+                  "ggforce",
+                  "nycflights13",
+                  "patchwork", 
+                  "glue",
+                  "DT", 
+              #    "gt",
+                  "kableExtra",
+                  "viridis",
+                  "skimr",
+                  "knitr",
+                  "unilur",
+                  "restatapi")
+
+for (pck in to_be_loaded) {
+  if (!require(pck, character.only = TRUE)) {
+    install.packages(pck)
+    stopifnot(require(pck, character.only = T))
+  }  
+}
+```
+
+# Introduction
+
+Exploration des variations de l'emploi en Europe après 1990 en utilisant
+des données d'Eurostat, de l'OIT ou de l'OCDE.
+
+## Objectif du Devoir
+
+-   Explorer les données
+-   Visualiser les données
+-   Étudier les dépendances linéaires entre différents aspects de
+    l'emploi
+-   Évaluer la qualité des dépendances linéaires
+-   Motiver le choix de l'ensemble de données
+
+# Choix de l'Ensemble de Données
+
+Motiver pourquoi Eurostat, l'OIT ou l'OCDE ont été choisis comme sources
+de données.
+
+```{r}
+#install.packages("restatapi")
+#get_eurostat_toc()
+#search_eurostat_toc("Overall employment growth")
+df <- read.delim("tesem040.tsv")
+df %>%
+  glimpse()
+
+df %>%
+  pivot_longer(cols = colnames(df)[2:ncol(df)],
+               names_to = "year",
+               values_to = "value") %>%
+  filter(!is.na(as.numeric(value))) %>%
+  mutate(value = as.numeric(value)) %>%
+#  group_by(year)%>%
+#  summarise(.f - )
+  ggplot(aes(x = year,
+             y = value)) + geom_boxplot()
+```
+
+```{r}
+#search_eurostat_toc("Employment and activity by sex and age - annual data")
+sex_age <- get_eurostat_data("lfsi_emp_a")
+sex_age %>%
+  glimpse()
+
+sex_age %>%
+  group_by(age) 
+  
+```
+
+```{r}
+edu <- get_eurostat_data("educ_uoe_enra03")
+  result <- edu %>%
+    group_by(time) 
+```
+# Exploration des Données
+
+Importer et explorer les données pertinentes. Identifier les variables
+clés telles que le taux d'emploi, l'âge, la profession, l'éducation et
+le sexe.
+
+# Visualisation des Données
+
+Créer des graphiques pour visualiser les variations de l'emploi au fil
+du temps et dans différents groupes démographiques.
+
+# Analyse des Dépendances Linéaires
+
+Utiliser des analyses statistiques pour étudier les dépendances
+linéaires entre le taux d'emploi des jeunes, des seniors et d'autres
+aspects de l'emploi.
+
+# Évaluation de la Qualité des Dépendances Linéaires
+
+Discuter de la fiabilité des dépendances linéaires identifiées.
+
+# Conclusion
+
+Résumer les principales conclusions de l'analyse.
+
+# Annexes
+
+Inclure le code utilisé pour l'analyse et la production des graphiques.
