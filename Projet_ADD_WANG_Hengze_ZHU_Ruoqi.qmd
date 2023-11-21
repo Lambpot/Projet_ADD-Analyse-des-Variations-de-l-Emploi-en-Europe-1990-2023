@@ -1,0 +1,650 @@
+---
+title: "Analyse des Variations de l'Emploi en Europe (1990-2023)"
+
+theme : default
+toc: true
+toc_float: true
+toc_depth: 2
+toc-expand : true
+toc_collapsed: false
+toc_back_to_top: true
+
+format:
+  html: 
+    output-file: Projet_ADD.html
+    
+embed-resources: true
+execute:
+  echo: true
+  eval: true
+  collapse: false
+callout-appearance: simple
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+#| label: params
+#| echo: false
+#| eval: true
+#| results: asis
+
+
+if (!require("stringr")) {
+  install.packages("stringr")
+  stopifnot(require("stringr"))
+}
+
+
+params <- list(
+  year = lubridate::year(Sys.time()),
+  curriculum = "M1 ISIFAR",
+  project_members = "Hengze WANG ; Ruoqi ZHU",
+  university= "Université Paris Cité",
+  github= "https://github.com/Lambpot/Projet_ADD"
+)
+
+stringr::str_glue('### {params$curriculum}\n\n',
+  "**{params$university}**\n\n",
+  "Academic Year {params$year}-{params$year+1}\n\n",
+  "Project Members : {params$project_members}\n\n",
+  "[Github Page]({params$github})\n\n\n",
+  "---\n\n")
+
+
+```
+
+```{r}
+to_be_loaded <- c("skimr",
+                  "ggplot2",
+                  "dplyr",
+                  "glue",
+                  "DT",
+                  "knitr",
+                  "unilur",
+                  "restatapi",
+                  "stats")
+
+for (pck in to_be_loaded) {
+  if (!require(pck, character.only = TRUE)) {
+    install.packages(pck)
+    stopifnot(require(pck, character.only = T))
+  }  
+}
+```
+
+# 0. Importation des données d'Eurostat
+
+| Data code     | liens et nom du data                                                                                                                                                                                      |
+|----------------------|--------------------------------------------------|
+| lfsi_emp_a_h  | [Employment and activity by sex and age (1992-2020) - annual data](https://ec.europa.eu/eurostat/databrowser/product/view/lfsi_emp_a_h?lang=en&category=labour.employ.lfsi.lfsi_emp_h)                    |
+| lfsi_educ_a_h | [Employment by educational attainment level (1998-2020) - annual data](https://ec.europa.eu/eurostat/databrowser/product/view/lfsi_educ_a_h?lang=en&category=labour.employ.lfsi.lfsi_emp_h)               |
+| earn_ses18_30 | [Mean annual earnings by sex, economic activity and educational attainment](https://ec.europa.eu/eurostat/databrowser/product/view/earn_ses18_30?lang=en&category=labour.earn.earn_ses2018.earn_ses18_an) |
+
+## Définition de la structure des données :
+
+**DSD of Employment and activity by sex and age (1992-2020) - annual
+data :**
+
+```{r}
+datatable(get_eurostat_dsd("lfsi_emp_a_h"))
+```
+
+**DSD of Employment by educational attainment level (1998-2020) - annual
+data :**
+
+```{r}
+datatable(get_eurostat_dsd("lfsi_educ_a_h"))
+```
+
+**DSD of Mean annual earnings by sex, economic activity and educational
+attainment :**
+
+```{r}
+datatable(get_eurostat_dsd("earn_ses18_30"))
+```
+
+# I. Exploration des données
+
+```{r}
+# Importer des données d'Eurostat
+emp_sex_age <- get_eurostat_data("lfsi_emp_a_h")
+emp_educ <- get_eurostat_data("lfsi_educ_a_h")
+earn <- get_eurostat_data("earn_ses18_30")
+# Visualiser la structure des données
+glimpse(emp_sex_age)
+glimpse(emp_educ)
+glimpse(earn)
+```
+
+Nous avons sélectionné la dataframe "Employment and activity by sex and
+age (1992-2020) - annual data" à partir d'Eurostat, identifiée par le
+code "lfsi_emp_a_h", que nous utilisons dans notre code. Un examen
+rapide avec la fonction `glimpse` révèle la présence de 7 variables,
+dont 6 sont qualitatives : age, unit, sex, indic_em, geo, time, et 1
+variable quantitative : values.
+
+De même, nous avons opté pour la dataframe "Employment by educational
+attainment level (1998-2020) - annual data" provenant d'Eurostat,
+identifiée par le code "lfsi_educ_a_h", que nous utilisons également
+dans notre code. Un aperçu avec la fonction `glimpse` indique la
+présence de 7 variables, dont 6 sont qualitatives : age, unit, sex,
+isced11, geo, time, et 1 variable quantitative : values.
+
+Enfin, nous avons retenu la dataframe "Mean annual earnings by sex,
+economic activity and educational attainment" d'Eurostat, identifiée par
+le code "earn_ses18_30", que nous utilisons dans notre code. Un examen
+rapide avec la fonction `glimpse` montre la présence de 9 variables,
+dont 8 sont qualitatives : indic_se, isced11, nace_r2, sex, sizeclas,
+unit, geo, time, et 1 variable quantitative : values.
+
+## 1. Filtration des données et visualiser la structure et les statistiques sommaires des données qu'on a besion et vérifier les valeurs manquantes
+
+```{r}
+emp_sex_age_filtered <- get_eurostat_data("lfsi_emp_a_h",
+                                 filters = c("PC_POP","T","Y15-64","EMP_LFS")) 
+# On filtre les données qui correspondent : 
+# unit = PC_POP = Percentage of total population, 
+# sex = T = Total, age = Y15-64 = From 15 to 64 years, 
+# indic_em = EMP_LFS = Total employment (resident population concept -LFS);
+
+emp_sex_age_filtered_EU27_2020 <- get_eurostat_data("lfsi_emp_a_h",
+                                 filters = c("PC_POP","T","Y15-64","EU27_2020","EMP_LFS")) 
+# On filtre les données qui correspondent : 
+# unit = PC_POP = Percentage of total population, 
+# sex = T = Total, age = Y15-64 = From 15 to 64 years, 
+# geo = EU27_2020 = European Union-27 countries (from 2020),
+# indic_em = EMP_LFS = Total employment (resident population concept -LFS);
+
+
+# Visualiser la structure des données
+glimpse(emp_sex_age_filtered)
+glimpse(emp_sex_age_filtered_EU27_2020)
+
+# Statistiques de synthèse Vérification des valeurs manquantes
+skimr :: skim(emp_sex_age_filtered_EU27_2020)
+
+```
+
+# II. Visualisation des données (Études univariées et bivariées)
+
+```{r}
+# La seule variable quantitative est values(taux d'emploi), on commence avec le summary statistics :
+emp_sex_age_filtered$values %>%
+  skimr::skim() %>% 
+  select(1:11, -starts_with('skim')) %>%
+  knitr::kable(caption = "Summary statistics pour taux d'emploi")
+
+```
+
+Nous constatons que le taux d'emploi moyen est 63.92%, l'écart-type est
+2.25, le minimal taux est 61, le médian est 63.4, le maximal est 68.5;
+
+## 1. Visualisation de la distribution des taux d'emploi
+
+```{r}
+# Boxplot
+emp_sex_age_filtered %>% 
+  ggplot(aes(y = values)) + 
+  geom_boxplot() +
+  labs(title = "Boxplot de taux d'emploi")
+```
+
+Par le boxplot, nous constatons que le minimum taux d'emploi est de 61%,
+le premier quantile est environ 62.2%, le médian est environ 63.4%, le
+troisième quantile est environ 64.8%, le maximum est environ 68.6%, ces
+valeurs là sont à peu près égales aux valeurs qu'on a obtenu précédent
+par skimr::skim;
+
+```{r}
+# Visualisation de la distribution des taux d'emploi
+ggplot(emp_sex_age_filtered, aes(x = values)) +
+  geom_histogram(aes(y = after_stat(density)), binwidth = 1, fill = "pink", color = "black", alpha = 0.7) +
+  labs(title = "Distribution de taux d'emploi",
+       x = "Taux d'emploi",
+       y = "Frequency")+
+  geom_density(color = "blue")
+```
+
+En examinant la distribution du taux d'emploi global de 1992 à 2020,
+nous constatons que le taux d'emploi est principalement réparti entre
+60% et 70%, et que le taux d'emploi se rapproche de la symétrie autour
+de 65 %.
+
+Il semble que le taux d'emploi est normalement distribué, mais nous ne
+pouvons pas en être sûrs. Nous allons donc utiliser le graphique qq plot
+et calculer skewness et kurtosis pour déterminer si le taux d'emploi
+suit réellement une distribution normale.
+
+```{r}
+# QQ plot
+qqnorm(emp_sex_age_filtered$values, main = "Q-Q Plot de taux d'emploi")
+qqline(emp_sex_age_filtered$values)
+```
+
+```{r}
+# calcul de skewness et de kurtosis
+library(e1071)
+skewness(emp_sex_age_filtered$values)
+kurtosis(emp_sex_age_filtered$values)
+```
+
+Dans le graphique qq plot, la grande majorité des points se trouvent le
+long de la ligne droite. De cela, nous pouvons conclure que le taux
+d'emploi suit une distribution normale, avec une skewness proche de zéro
+(-0.1182076) et une kurtosis proche de zéro (0.1653475) également. Cela
+vérifie une fois de plus que le taux d'emploi suit une distribution
+normale.
+
+## 2. Visualisation de l'évolution des taux d'emploi dans le temps
+
+```{r}
+ggplot(emp_sex_age_filtered_EU27_2020, aes(x = time, y = values, group = 1)) +
+  geom_line(color = "blue") +
+  labs(title = "Employment Rate Over Time",
+       x = "Time",
+       y = "Employment Rate")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Nous pouvons constater que le taux d'emploi dans les 27 pays de l'Union
+européenne varie entre 61% et 69% au fil du temps. Entre 2000 et 2008,
+le taux d'emploi a augmenté de manière constante, tandis qu'entre 2008
+et 2013, le taux d'emploi a diminué chaque année, probablement en raison
+de la crise financière de 2008. De 2013 à 2019, le taux d'emploi a
+progressivement augmenté, puis après 2019, en raison de la pandémie de
+la COVID-19, le taux d'emploi a de nouveau diminué
+
+## 3. Visualisation de la comparaison des taux d'emploi par sexe
+
+```{r}
+# Filtration des données et comparaison des taux d'emploi par sexe
+emp_data_by_sex <- get_eurostat_data("lfsi_emp_a_h",
+                                     filters = c("PC_POP","Y15-64","EU27_2020","EMP_LFS"))
+# Convert the time column to Date format with a fixed month and day
+emp_data_by_sex$time <- as.Date(paste(emp_data_by_sex$time, "-01-01", sep = ""), format = "%Y-%m-%d")
+ggplot(emp_data_by_sex, aes(x = time, y = values, color = sex)) +
+  geom_line() +
+  labs(title = "Employment Rate Comparison by Gender",
+       x = "Time",
+       y = "Employment Rate",
+       color = "Gender")
+```
+
+Lors de la comparaison des taux d'emploi entre les sexes de 2000 à 2020,
+nous constatons que le taux d'emploi des hommes a toujours été plus
+élevé que celui des femmes. Le taux d'emploi des hommes fluctue autour
+de 70%, tandis que celui des femmes, qui était d'environ 50% en 2000, a
+augmenté pour atteindre un peu plus de 60%. Après 2008, le taux d'emploi
+des hommes a été davantage impacté par la crise économique, subissant
+une baisse plus significative, tandis que le taux d'emploi des femmes
+semble avoir été moins affecté.
+
+Nous pouvons observer que, bien que le taux d'emploi global des femmes
+soit inférieur à celui des hommes, il diminue progressivement, réduisant
+ainsi l'écart avec les hommes. Cette tendance suggère que, au fil du
+temps, les femmes ont vu une amélioration relative de leurs taux
+d'emploi par rapport aux hommes.
+
+## 4. Visualisation de la comparaison des taux d'emploi par groupe d'âge
+
+```{r}
+emp_data_by_age <- get_eurostat_data("lfsi_emp_a_h",
+                              filters = c("T","PC_POP","EU27_2020","EMP_LFS"))
+emp_data_by_age <- emp_data_by_age %>% arrange(time)
+ggplot(emp_data_by_age, aes(x = time, y = values, color = age, group = age)) +
+  geom_line() +
+  labs(title = "Employment Rate Comparison by Age Group",
+       x = "Time",
+       y = "Employment Rate",
+       color = "Age Group")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Lors de la visualisation comparative des taux d'emploi dans différentes
+tranches d'âge de 15 à 24 ans, de 15 à 64 ans, de 20 à 64 ans, de 25 à
+54 ans et de 55 à 64 ans de 2000 à 2020, nous avons observé deux groupes
+d'âge particulièrement intéressants : les jeunes de 15 à 24 ans et les
+personnes âgées de 55 à 64 ans.
+
+Nous avons constaté que le taux d'emploi des jeunes de 15 à 24 ans et
+des personnes âgées de 55 à 64 ans était d'environ 35% en 2000. Cela
+signifie qu'en 2000, les taux d'emploi des jeunes et des personnes âgées
+étaient relativement bas, mais au fil du temps, leurs données ont
+divergé, suivant des trajectoires différentes. Le taux d'emploi des
+personnes âgées de 55 à 64 ans n'a cessé d'augmenter de 2000 à 2020,
+atteignant même 60% en 2020. En revanche, le taux d'emploi des jeunes de
+15 à 24 ans a connu une baisse, atteignant son point le plus bas à 30%.
+
+Nous émettons l'hypothèse que cela pourrait être dû à l'élévation
+constante de l'âge de la retraite, obligeant les personnes âgées à
+travailler pendant quelques années supplémentaires. En revanche, les
+jeunes pourraient nécessiter de plus en plus de temps d'éducation,
+passant plus de temps à étudier et à obtenir davantage de diplômes,
+retardant ainsi leur entrée sur le marché du travail.
+
+## 5. Visualisation de la relation entre le niveau d'éducation et le taux d'emploi
+
+```{r}
+emp_by_edu_filtered <- get_eurostat_data("lfsi_educ_a_h", filters = c("PC_POP", "T", "Y15-64","	
+EU27_2020"))
+# boxplot
+ggplot(emp_by_edu_filtered, aes(x = isced11, y = values)) +
+  geom_boxplot(fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Employment Rate by Education Level",
+       x = "Education Level",
+       y = "Employment Rate")
+```
+
+Nous observe une tendance où un niveau d'éducation plus élevé est
+généralement lié à des taux d'emploi plus élevés. De plus, les données
+relatives aux taux d'emploi pour les individus ayant un niveau
+d'éducation supérieur montrent une dispersion moindre, concentrée
+généralement à des niveaux élevés. En d'autres termes, un niveau
+d'éducation supérieur est généralement corrélé à des taux d'emploi plus
+élevés, et cette relation semble relativement stable.
+
+Cependant, lorsqu'on se concentre sur les niveaux d'éducation plus bas,
+on observe une dispersion plus importante entre le premier quartile et
+le troisième quartile. De plus, il existe de nombreux points de données
+aberrants. Cela suggère que, bien que globalement, un niveau d'éducation
+plus bas soit associé à un taux d'emploi plus bas, cette relation n'est
+pas aussi stable. Il existe des situations où, malgré un niveau
+d'éducation bas, le taux d'emploi peut être élevé. En résumé, la
+corrélation entre le niveau d'éducation bas et le taux d'emploi bas
+n'est pas aussi certaine, et des variations importantes peuvent être
+observées en fonction du lieu et du moment.
+
+### Taux d'emploi moyens en fonction des niveaux d'éducation et des pays
+
+```{r fig.width=12,fig.height=5}
+# Calcul des moyennes par sous-groupe de pays et de niveau d'éducation
+summary_emp_by_edu_filtered <- emp_by_edu_filtered %>%
+  group_by(geo, isced11) %>%
+  summarize(mean_values = mean(values, na.rm = TRUE),.groups = "drop")
+
+# Graphique des comparaisons entre groupes
+ggplot(summary_emp_by_edu_filtered, aes(x = isced11, y = mean_values, fill = geo)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = geo), 
+            position = position_dodge(width = 0.9),
+            vjust = 0.5, 
+            size =2, 
+            angle = 90, 
+            hjust = 0)  +
+  labs(title = "Average Employment Rate by Education Level and Country",
+       x = "Education Level",
+       y = "Average Employment Rate",
+       fill = "Country") 
+```
+
+Lors de notre étude sur les taux d'emploi moyens selon différents
+niveaux d'éducation et pays, nous pouvons clairement observer que les
+données de certains pays confirment nos hypothèses précédentes. Prenons
+l'exemple de l'Islande. Bien que, comme dans d'autres pays, un niveau
+d'éducation plus bas soit associé à un taux d'emploi plus bas, en
+comparaison avec d'autres nations, l'Islande présente une particularité.
+Les personnes ayant un niveau d'éducation relativement bas en Islande
+affichent des taux d'emploi élevés, parfois même supérieurs à ceux de
+certains pays où le niveau d'éducation est plus élevé. Examinons
+maintenant un autre exemple avec la Slovaquie ("SK"). Dans ce pays,les
+faibles niveaux d'éducation se traduisent par de faibles taux d'emploi,
+mais à mesure que le niveau d'éducation augmente, les taux d'emploi en
+Slovaquie deviennent également élevés. Cela signifie que la corrélation
+entre le niveau d'éducation et les taux d'emploi est très forte.
+
+## 6. Étude sur la relation entre le revenu, le sexe et l'activité économique
+
+```{r}
+salaire_dsd <- get_eurostat_dsd("earn_ses18_30")
+salaire <- get_eurostat_data("earn_ses18_30", 
+                             filters = c("F,M","ERN", "TOTAL", "GE10", "EUR", "EU27_2020"))
+salaire_sex_ecoact <- salaire %>%
+filter(sex != "T")
+
+# Visualisation
+ggplot(salaire_sex_ecoact, aes(x = nace_r2, y = values, fill = sex)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  labs(title = "Salaire annuel de secteurs par sex",
+       x = "Secteur",
+       y = "Salaire",
+       fill = "Sex")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Dans tous les secteurs de l'UE, les salaires des hommes sont
+systématiquement supérieurs à ceux des femmes, avec des écarts plus
+importants dans les secteurs K, M, J, C, B_E (Activités financières et
+d'assurance; Activités scientifiques et techniques; Information et
+communication; Fabrication, Industrie (à l'exclusion de la
+construction)). En revanche, les secteurs B, E, F, H, I (Extraction de
+minerais et de carrières, Approvisionnement en eau; gestion des eaux
+usées et des déchets; Construction; Transport et entreposage;
+Hébergement et restauration) présentent des disparités moins marquées
+entre les revenus des hommes et des femmes.
+
+Les secteurs D, J, K, M (Production et distribution d'électricité, de
+gaz, de vapeur et d'air conditionné; Information et communication;
+Activités financières et d'assurance; Activités scientifiques et
+techniques) affichent des niveaux de revenus élevés pour les hommes et
+les femmes (supérieurs à 40000); tandis que les secteurs E, I, N
+(Approvisionnement en eau; Gestion des eaux usées et des déchets;
+Hébergement et restauration; Activités de services administratifs et de
+soutien) présentent des niveaux de revenus plus bas (inférieurs à
+30000).
+
+# III. Régression linéaire
+
+## Régression linéaire de salaire en fonction du taux d'emploi
+
+```{r}
+salaire_dsd <- get_eurostat_dsd("earn_ses18_30")
+salaire_total <- get_eurostat_data("earn_ses18_30", 
+                             filters = c("T","ERN", "TOTAL", "GE10", "EUR"))
+salaire_sex_ecoact_total <- salaire_total %>%
+  group_by(geo)%>%
+  summarise(mean_salary = mean(values))
+
+employment_geo_2018 <- get_eurostat_data("lfsi_emp_a_h",
+                                 filters = c("PC_POP","T","Y15-64","EMP_LFS")) %>%
+  filter( time == "2018")
+
+emp_sal <- employment_geo_2018 %>%
+  inner_join(salaire_sex_ecoact_total, by = join_by(geo))
+
+#scatterplot
+p <- emp_sal %>%
+  ggplot(aes(x=values, y=mean_salary)) + 
+  geom_point(color='pink') +
+  labs(title = "Régression linéaire de salaire en fonction du taux d'emploi",
+       subtitle = "Année 2018") 
+
+rho <- cor(emp_sal$mean_salary, emp_sal$values) 
+#régression linéaire
+p + geom_smooth(method="lm",
+                se=FALSE,
+                color='#71EAF8',
+                formula="y~x") +
+  annotate(geom = "text",
+           x = 80, y = 30000,
+           label = glue("rho = {round(rho, 2)}"))
+
+```
+
+En calculant le coefficient de corrélation de Pearson rho, nous obtenons
+que rho est égal à 0.55 \> 0, ce qui signifie que le salaire moyen a
+tendance à augmenter lorsque le taux d'emploi augmente. Dans le
+graphique, bien que la régression linéaire soit positivement corrélée,
+de nombreux points se trouvent à une grande distance de la droite, nous
+devrons donc analyser l'écart entre les résidus et le salaire moyen.
+
+```{r}
+# Ajustement d'un modèle linéaire
+lm1 <- lm(mean_salary~values, data=emp_sal)
+
+# Utilisation d'augment sur le modèle linéaire
+emp_sal_augmented <- broom::augment(lm1)
+
+# Création de plot
+ggplot(emp_sal_augmented) +
+  geom_point(aes(x = values, y = mean_salary), 
+             color = "darkgrey") +
+  geom_line(aes(x = values, y = .fitted)) +
+  geom_segment(aes(x = values, xend = values, y = .fitted, yend = mean_salary,
+                   color = forcats::as_factor(sign(.resid))),
+               alpha = 0.5) +
+  theme(legend.position = "None") +
+  ggtitle("Gaussian cloud", subtitle = "with residuals")
+```
+
+Dans le graphique de Gaussien cloud, les segments bleues représentent
+les résidus positifs, les segments rouges représentent les résidus
+négatifs, le nombre de points de résidus positifs et négatifs est
+approximativement égal, plus le milieu de la droite d'ajustement est
+proche, plus il y a de points de données, plus les résidus des données
+sont importants.
+
+# IV. Évaluation de la qualité des dépendances linéaires
+
+```{r}
+lm1 <- lm(mean_salary~values, data=emp_sal)
+summary(lm1)
+
+coeff <- lm1$coefficients # â, b_chapeau
+kable(coeff)
+
+#Summary statistique du modèle lm1
+kable(broom::tidy(lm1))
+#Informations sur le diagnostic du modèle lm1
+kable(broom::glance(lm1))
+
+```
+
+Selon le modèle de régression linéaire établi, nous avons étudié la
+relation entre le salaire moyen ('mean_salary') et le taux
+d'emploi('values'). Les résultats du modèle indiquent que cette relation
+linéaire est statistiquement significative et offre une certaine
+explication des variations du salaire moyen.
+
+Tout d'abord, l'Intercept du modèle est de -66865.4, ce qui signifie que
+lorsque le taux d'emploi est nulle, la valeur estimée du salaire moyen
+est négative. Cependant, il est important de noter que, compte tenu du
+contexte actuel, l'Intercept pourrait ne pas avoir de signification
+pratique.
+
+Ensuite, le coefficient de la variable le taux d'emploi est de 1446.4,
+ce qui signifie qu'une augmentation d'une unité du taux d'emploi est
+associée à une augmentation prévue de 1446.4 pour le salaire moyen. La
+significativité de ce coefficient, avec une valeur p de 0.000449,
+indique que l'impact de taux d'emploi sur le salaire moyen est
+statistiquement significatif.
+
+En ce qui concerne l'ajustement global du modèle, le R² est de 0.3075,
+ce qui signifie que le modèle peut expliquer environ 30.75% des
+variations du salaire moyen. Cela suggère que notre modèle offre une
+explication partielle, mais pas complète, des fluctuations du salaire
+moyen.
+
+Enfin, le F-statistique de 15.1, avec la p-value correspondante de
+0.0004492, confirme que le modèle dans son ensemble est significatif.
+Cela indique que notre modèle est significativement meilleur que le
+modèle nul qui ne contient aucune variable prédictive.
+
+En conclusion, d'après les résultats de ce modèle de régression
+linéaire, nous pouvons affirmer que le taux d'emploi a un impact
+significatif sur le salaire moyen. Cependant, la capacité explicative du
+modèle est limitée, suggérant la nécessité d'examiner d'autres facteurs
+potentiels.
+
+```{r}
+#diagnostic plots
+plot(lm1)
+```
+
+Le premier plot est Residuals vs Fitted Values Plot, il est pour
+vérifier la variance constante des résidus: la courbe rouge est la
+tendance des résidus (la moyenne de les residus), par observation de la
+courbe, on en déduit que la variance des résidus ne sont pas presque
+constantes, donc ŷ ne satisfait pas e\~N(0, sigma²).
+
+Le deuxième plot est Quantile-Quantile (Q-Q) Plot, il est pour vérifier
+la normalité des résidus: dans le graphique, nous observons que tous les
+points forment une ligne droite et que seul un très petit nombre de
+points s'écarte de la ligne, ce qui nous permet de conclure que les
+résidus du modèle de régression sont normalement distribués.
+
+Le troisième plot est Scale-Location Plot, il est pour vérifier
+l'homoscédasticité: nous constatons qu'il n'y a pas de tendance ou de
+variation claire dans la dispersion des points, ce qui peut indiquer la
+présence d'homoscédasticité.
+
+Le quatrième plot est Residuals vs Leverage Plot, il est pour identifier
+les points de données influents: dans ce plot, il n'y a pas de points se
+trouvent en dehors de la ligne pointillée (distance de Cook), donc il
+n'y a aucun point influent dans notre modèle de régression.
+
+# V. Motivation du choix de l'ensemble de données et conclusion
+
+Avant tout, l'étude de l'emploi revêt une importance capitale dans la
+compréhension des dynamiques socio-économiques. L'emploi constitue
+souvent la pierre angulaire de la subsistance individuelle, garantissant
+des revenus stables et contribuant à la stabilité financière des
+individus. Par ailleurs, il est étroitement lié à la croissance
+économique, étant un indicateur crucial d'une économie active.
+
+Tout d'abord, l'analyse de l'emploi selon le sexe se révèle essentielle
+pour identifier et remédier aux disparités de genre sur le marché du
+travail. Cette approche contribue à promouvoir l'équité salariale, à
+assurer un accès équitable aux opportunités professionnelles et à lutter
+contre la discrimination.
+
+Ensuite, en examinant l'emploi selon l'âge, on peut comprendre les défis
+spécifiques auxquels font face différentes générations. Mettre en
+lumière les obstacles à l'employabilité des jeunes et favoriser un
+environnement inclusif pour les travailleurs plus âgés devient
+impératif.
+
+Par la suite, la considération de l'emploi en fonction du niveau
+d'éducation offre des indications sur l'équité des opportunités d'emploi
+en lien avec l'accès à l'éducation. Identifier les lacunes dans cet
+accès. Cette approche contribue à assurer que l'éducation conduit
+effectivement à des opportunités professionnelles équitables.
+
+En plus, La recherche sur la relation entre le revenu, le sexe et
+l'activité se révèle essentielle pour comprendre les inégalités
+économiques et sociales. En révélant les écarts de revenu entre hommes
+et femmes dans tous les secteurs d'activité, cette étude offre des bases
+solides pour réduire l'inégalité entre les sexes dans divers domaines
+professionnels.
+
+Enfin, l'étude de la dépendance linéaire entre le taux d'emploi et le
+salaire fournit des informations cruciales pour élaborer des politiques
+économiques éclairées. La conclusion d'une dépendance linéaire
+significative, où une augmentation du taux d'emploi est corrélée à une
+hausse des salaires, encourage la création d'initiatives visant à
+stimuler l'emploi. Cette conclusion guide également l'identification des
+tendances sur le marché du travail et la promotion de conditions de
+travail et de salaires plus équitables.
+
+En résumé, l'étude de l'emploi sous diverses dimensions offre une
+perspective complète des enjeux socio-économiques. Les conclusions de
+ces analyses sont cruciales pour formuler des politiques inclusives,
+promouvoir l'équité et travailler vers des conditions de travail et des
+salaires plus équitables.
+
+# Annexe
+
+Analyse des Données avec `skimr`
+
+Visualisation des Données avec `ggplot2`
+
+Manipulation de Données avec `dplyr`
+
+Utilisation de `glue` pour l'Interpolation de Texte
+
+Création de Tableaux Interactifs avec `DT`
+
+Utilisation de `knitr` pour Intégrer le Code dans le Rapport
+
+Utilisation de `restatapi` pour télécharger des données Eurostat
