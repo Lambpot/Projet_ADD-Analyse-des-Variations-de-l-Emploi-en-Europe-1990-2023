@@ -1,0 +1,288 @@
+---
+title: "Devoir II : Emploi (ACP)"
+
+theme : default
+toc: true
+toc_float: true
+toc_depth: 2
+toc-expand : true
+toc_collapsed: false
+toc_back_to_top: true
+
+format:
+  html: 
+    output-file: Projet2_ADD_WANG_Hengze_ZHU_Ruoqi.html
+    
+embed-resources: true
+execute:
+  echo: true
+  eval: true
+  collapse: false
+callout-appearance: simple
+editor: 
+  markdown: 
+    wrap: 72
+---
+```{r}
+#| label: params
+#| echo: false
+#| eval: true
+#| results: asis
+
+
+if (!require("stringr")) {
+  install.packages("stringr")
+  stopifnot(require("stringr"))
+}
+
+
+params <- list(
+  year = lubridate::year(Sys.time()),
+  curriculum = "M1 ISIFAR",
+  project_members = "Hengze WANG ; Ruoqi ZHU",
+  university= "Université Paris Cité",
+  github= "https://github.com/Lambpot/Projet_ADD"
+)
+
+stringr::str_glue('### {params$curriculum}\n\n',
+  "**{params$university}**\n\n",
+  "Academic Year {params$year}-{params$year+1}\n\n",
+  "Project Members : {params$project_members}\n\n",
+  "[Github Page]({params$github})\n\n\n",
+  "---\n\n")
+```
+
+```{r}
+to_be_loaded <- c("skimr",
+                  "ggplot2",
+                  "dplyr",
+                  "glue",
+                  "DT",
+                  "knitr",
+                  "unilur",
+                  "restatapi",
+                  "stats",
+                  "factoextra",
+                  "corrplot",
+                  "dplyr",
+                  "tidyr")
+
+for (pck in to_be_loaded) {
+  if (!require(pck, character.only = TRUE)) {
+    install.packages(pck)
+    stopifnot(require(pck, character.only = T))
+  }  
+}
+```
+
+## Importation des données d'Eurostat
+
+```{r}
+#Emploi
+emp <- get_eurostat_data("lfsi_emp_a_h",
+                                 filters = c("PC_POP","T","Y15-64","EMP_LFS"))
+names(emp)[names(emp) == 'values'] <- 'emploi'
+emp <- emp %>%
+  select(geo, time, emploi)
+
+#Population
+pop <- get_eurostat_data("demo_pjan",
+                                 filters = c("TOTAL","T"))
+names(pop)[names(pop) == 'values'] <- 'population'
+pop <- pop %>%
+  select(geo, time, population)
+
+#GDP
+gdp <- get_eurostat_data("nama_10_gdp",
+                                 filters = c("CP_MEUR","B1GQ",""))
+names(gdp)[names(gdp) == 'values'] <- 'PIB'
+gdp <- gdp %>%
+  select(geo, time, PIB)
+
+#Annual net earnings
+earn<- get_eurostat_data("earn_nt_net",
+                                 filters = c("EUR","TOTAL","P1_NCH_AW100"))
+names(earn)[names(earn) == 'values'] <- 'revenu'
+earn <- earn %>%
+  select(geo, time, revenu)
+
+#Unemployment
+unemp <- get_eurostat_data("une_rt_a_h",
+                                 filters = c("PC_POP","T","Y15-74"))
+names(unemp)[names(unemp) == 'values'] <- 'chomage'
+unemp <- unemp %>%
+  select(geo, time, chomage)
+
+#Espérance de vie
+vie <- get_eurostat_data("demo_mlexpecedu",
+                         filters = c("T", "Y_LT1","TOTAL" ))
+names(vie)[names(vie) == 'values'] <- 'esperance'
+vie <- vie %>%
+  select(geo, time, esperance)
+
+```
+Nous avons sélectionné six dataframes d'Eurostat, en filtrant chaque dataframe pour les conditions qui répondent à nos besoins et en renommant les noms qui représentent les variables dans ce projet, nous avons obtenu six dataframes qui contiennent uniquement "geo (country), time (year), variable" pour chaque pays européen pour l'année donnée : taux d'emploi, population, PIB, revenus annuels nets, taux de chômage et espérance de vie. Dans notre projet, la variable cible est le taux d'emploi, les cinq facteurs affectant le taux d'emploi sont des variables quantitatives. Nous utiliserons donc ACP pour réduire l'échelle des données et extraire les principales composantes affectant le taux d'emploi.
+```{r}
+# Jointure des data ci-dessus
+df <- emp %>%
+  inner_join(pop, by = c('geo', 'time')) %>%
+  inner_join(gdp, by = c('geo', 'time')) %>%
+  inner_join(earn, by = c('geo', 'time')) %>%
+  inner_join(unemp, by = c('geo', 'time')) %>%
+  inner_join(vie, by = c('geo', 'time'))
+
+# Combinaison de geo et time comme individu
+df <- unite(df, individu, c(geo, time))
+glimpse(df)
+skimr :: skim(df) #il n'y a pas de missing value dans notre database
+```
+
+```{r}
+# Convertir la colonne individu en clé
+rownames(df) <- df$individu
+df <- df[, -1]
+datatable(df)
+```
+Nous avons obtenu un jeu de données avec le pays et la date comme clés. Pour chaque individu, nous disposons d'une collection de variables quantitatives.
+
+## Descriptive statistique
+
+```{r}
+df %>%
+  pivot_longer(cols = everything(),
+               values_to = "value",         ## première colonne
+               names_to = "variable") %>%   ## deuxième colonne
+  ggplot(aes(y=value, x=variable)) +
+  geom_violin() +             
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "Violin plot of each variable in emploi dataset")
+```
+
+-   **Chômage (`chomage`)** : La distribution du chômage montre un pic
+    marqué, suggérant une concentration autour d'une valeur commune,
+    mais aussi une longue queue qui indique la présence de valeurs de
+    chômage plus élevées bien que moins fréquentes.
+
+-   **Emploi (`emploi`)** : La distribution de l'emploi semble large et
+    relativement uniforme, avec des pointes moins prononcées, ce qui
+    peut indiquer une variabilité importante dans les taux d'emploi.
+
+-   **Espérance de vie (`esperance`)** : L'espérance de vie montre une
+    distribution avec une plage relativement étroite et une
+    concentration autour du milieu, suggérant que la plupart des valeurs
+    sont proches de la médiane avec quelques valeurs extrêmes.
+
+-   **Produit Intérieur Brut (`PIB`)** : Le PIB présente une
+    distribution très concentrée avec une queue longue étendant vers des
+    valeurs supérieures, indiquant que la plupart des observations ont
+    un PIB plus faible avec quelques cas de PIB très élevé.
+
+-   **Population (`population`)** : La distribution de la population
+    montre plusieurs pics, ce qui pourrait indiquer la présence de
+    groupes distincts au sein des données ou de plusieurs modes.
+
+-   **Revenu (`revenu`)** : La distribution du revenu montre une forme
+    de violon assez équilibrée avec une queue légèrement plus longue
+    vers les valeurs supérieures, indiquant une variété dans les niveaux
+    de revenu mais avec une tendance vers les valeurs plus basses.
+
+## Correlation
+
+```{r}
+df %>%
+  cor() %>%
+  corrplot::corrplot(method = "number", 
+                     title = "Table de corrélation avec l'emploi")
+```
+
+La variable "emploi" montre une forte corrélation positive avec "revenu"
+(0,67), ce qui suggère que l'emploi tend à augmenter avec le revenu. 
+
+Il existe également une corrélation négative modérée entre "emploi" et "chomage" (-0,48), indiquant que des taux de chômage plus élevés sont généralement associés à des taux d'emploi plus faibles, ce qui est cohérent avec la logique économique. 
+
+La variable "population" a une forte corrélation positive avec "PIB" (0,80), ce qui pourrait indiquer que les économies avec une population plus importante ont tendance à avoir un PIB plus élevé. 
+
+On observe aussi que "esperance" a une corrélation relativement élevée avec "revenu" (0,76), ce qui pourrait impliquer que des revenus plus élevés sont associés à une espérance de vie plus longue, peut-être en raison de meilleures conditions de vie et d'accès aux soins de santé. 
+
+La variable "PIB" a une corrélation négative faible avec "emploi" (-0,20), ce qui est un peu surprenant car on pourrait s'attendre à une corrélation positive. Cela pourrait nécessiter une enquête plus approfondie pour comprendre la dynamique sous-jacente entre ces variables.
+
+## Réalisation de l'ACP sur les covariables
+
+```{r}
+df_x <- df %>%
+  select(-emploi)  ## on selectionne toutes les vars sauf emploi, parce que emploi est y;
+df_pca_standard <- df_x %>%
+  prcomp(center = TRUE, scale. = TRUE)  ## centrer chaque colonne; diviser par écart-type de chaque colonne => (xi-xi_bar)/sigmai_chapeau;
+summary(df_pca_standard) ## on fait l'ACP jusqu'à PC3 pour avoir 90% culumative proportion;
+
+## Scree plot
+fviz_eig(df_pca_standard)
+```
+L'importance des composantes est mesurée par la déviation standard de chaque composante principale (PC), avec la proportion de la variance qu'elle explique et la proportion cumulative de la variance. 
+
+- La première composante principale (PC1) présente une déviation standard de 1.4785 et explique 43.72% de la variance totale des données.
+- La deuxième composante principale (PC2) a une déviation standard de 1.2303 et explique 30.27% de la variance supplémentaire.
+- La trois composante principale (PC3) a une déviation standard de 1.0230 et explique 20.93% de la variance supplémentaire, portant la proportion cumulative de la variance expliquée à 94.92%.
+- Les troisième, quatrième et cinquième composantes principales (PC4 et PC5) ajoutent progressivement moins de variance expliquée, avec une contribution cumulative qui atteint 100% sur les cinq composantes.
+
+Le Scree plot illustre la proportion de la variance expliquée par chaque composante principale. Ce graphique est souvent utilisé pour déterminer le nombre de composantes à retenir selon le critère du coude (elbow criterion).
+
+- On observe une diminution rapide de la variance expliquée par les trois premières composantes principales, suivie d'une baisse plus modérée pour les composantes suivantes.
+- Le "coude" du graphique se situe entre PC2 et PC3, ce qui suggère que retenir les deux premières composantes principales pourrait être suffisant pour une représentation efficace des données.
+
+l'ACP a réussi à réduire la dimensionnalité de l'ensemble de données tout en conservant une grande partie de l'information originale
+```{r fig.width=18,fig.height=10}
+## Biplot
+pca_plot <- fviz_pca_ind(df_pca_standard,
+             col.ind = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "red"),
+             repel = TRUE,
+             title = "Biplot des individus")
+pca_plot <- pca_plot + theme(text = element_text(size = 0.1))
+pca_plot
+
+```
+- **Répartition des Points** : Les points sont répartis sur tout le graphique, ce qui suggère une grande variabilité entre les individus à travers les deux composantes principales.
+- **Densité et Couleur** : Les zones avec une densité élevée de points pourraient indiquer des individus ayant des profils similaires. Les points colorés en rouge représentent ceux pour lesquels la projection sur les composantes principales est la plus représentative.
+- **Regroupements et Isolation** : Certains groupes de points semblent se regrouper (comme ceux qui pourraient représenter un pays à différentes années), tandis que d'autres points sont plus isolés, ce qui pourrait indiquer des caractéristiques uniques ou des changements significatifs pour ces individus au fil du temps.
+- **Interprétation des Axes** : Sans connaître la signification exacte des composantes principales (PC1 et PC2), il est difficile de donner une interprétation précise. Néanmoins, les points qui sont proches sur l'axe horizontal (PC1) ont des caractéristiques similaires qui sont fortement influencées par les variables qui chargent principalement sur cette composante.
+
+```{r}
+# Projections des variables de visualisation sur les première et deuxième composantes principales de l'ACP
+fviz_pca_var(df_pca_standard, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "yellow", "red"),
+             title = "Correlation circle")
+```
+- **Axes des Composantes Principales** : L'axe horizontal (Dim1) représente la première composante principale et explique 43.7% de la variance, tandis que l'axe vertical (Dim2) représente la deuxième composante principale et explique 30.3% de la variance.
+- **Position des Variables** : Les variables sont représentées par des vecteurs, et leur position par rapport aux axes indique leur corrélation avec les composantes principales. Plus un vecteur est proche d'un axe, plus la variable correspondante est fortement corrélée avec cette composante principale.
+- **Corrélation entre les Variables** : Les variables qui pointent dans la même direction générale sont positivement corrélées, tandis que celles qui pointent dans des directions opposées sont négativement corrélées. Par exemple, "PIB" et "population" sont positivement corrélées, ce qui suggère que des valeurs plus élevées pour l'une sont associées à des valeurs plus élevées pour l'autre dans les données.
+- **Contribution des Variables** : La couleur des vecteurs indique leur contribution à la composante principale respective, avec des couleurs plus chaudes (comme le rouge) indiquant une contribution plus élevée. "PIB", "population" et "revenue" semblent être des contributeurs importants à la première composante principale.
+```{r}
+## Scores des PC
+pca_scores <- df_pca_standard$x
+datatable(pca_scores)
+```
+La table montre les scores des deux premières composantes principales (PC1 et PC2) pour différentes observations, identifiées comme des années associées à des codes de pays (par exemple, BG_2008, DK_2007, etc.). Ces scores sont issus d'une Analyse en Composantes Principales (ACP) et reflètent la position de chaque observation dans l'espace réduit des composantes principales.
+
+- Les scores sur PC1 (qui explique 43.7% de la variance) montrent une distinction claire entre certains groupes de pays. Par exemple, les observations pour "IT" (Italie) affichent des scores élevés positifs, les distinguant nettement des autres pays comme "BG" (Bulgarie) et "EE" (Estonie), qui ont des scores négatifs.
+- Sur PC2 (qui explique 30.3% de la variance), il y a également une séparation notable entre les observations. Par exemple, "TR" (Turquie) a des scores très élevés sur PC2, ce qui suggère que la direction et la magnitude de cette composante capturent des caractéristiques distinctes associées à ces observations.
+- La variabilité au sein d'un même pays sur plusieurs années (par exemple, les différentes années pour "BG") peut refléter des changements ou des tendances dans les variables sous-jacentes au fil du temps.
+- Pour les pays comme "IT", une trajectoire ascendante est visible sur PC1 au fil des ans, ce qui pourrait indiquer une croissance ou une augmentation dans les caractéristiques que cette composante principale représente.
+
+Ces scores indiquent les coordonnées des données originales dans le
+nouvel espace des composantes principales et peuvent être utilisés pour
+d'autres analyses telles que le data clustering.
+
+## Conclusion
+
+Dans cette analyse de données, nous avons exploré un ensemble de données comprenant des informations sur l'emploi, la population, le PIB, les revenus, le chômage et l'espérance de vie dans différents pays et années. Voici les principales conclusions tirées de cette analyse :
+
+1. **Distribution des Variables** : Nous avons examiné la distribution de chaque variable et noté des caractéristiques intéressantes. Par exemple, la distribution de l'emploi était relativement uniforme, tandis que le chômage présentait un pic marqué.
+
+2. **Corrélation entre les Variables** : Nous avons calculé la matrice de corrélation entre les variables et noté des relations importantes. Par exemple, il existe une forte corrélation positive entre l'emploi et le revenu, tandis que le chômage est négativement corrélé avec l'emploi, ce qui est cohérent avec la théorie économique.
+
+3. **Analyse en Composantes Principales (ACP)** : Nous avons effectué une ACP pour réduire la dimensionnalité de l'ensemble de données. Les deux premières composantes principales expliquent ensemble plus de 74% de la variance totale des données, ce qui suggère qu'elles capturent efficacement l'essentiel de l'information.
+
+4. **Interprétation de l'ACP** : Nous avons interprété les résultats de l'ACP en examinant les biplots des individus et des variables. Les biplots ont montré comment les individus et les variables sont liés aux composantes principales. Par exemple, certains pays ont été identifiés comme ayant des profils distincts en fonction des scores des composantes principales.
+
+En conclusion, cette analyse de données a permis de mettre en évidence des relations intéressantes entre différentes variables liées à l'économie et à la démographie des pays. L'ACP a été particulièrement utile pour réduire la dimensionnalité des données tout en préservant l'information essentielle. Ces résultats pourraient servir de base à des analyses plus approfondies ou à des études comparatives entre les pays.
