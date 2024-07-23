@@ -77,7 +77,7 @@ for (pck in to_be_loaded) {
 # 0. Importation des données d'Eurostat
 
 | Data code     | liens et nom du data                                                                                                                                                                                      |
-|----------------------|--------------------------------------------------|
+|---------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | lfsi_emp_a_h  | [Employment and activity by sex and age (1992-2020) - annual data](https://ec.europa.eu/eurostat/databrowser/product/view/lfsi_emp_a_h?lang=en&category=labour.employ.lfsi.lfsi_emp_h)                    |
 | lfsi_educ_a_h | [Employment by educational attainment level (1998-2020) - annual data](https://ec.europa.eu/eurostat/databrowser/product/view/lfsi_educ_a_h?lang=en&category=labour.employ.lfsi.lfsi_emp_h)               |
 | earn_ses18_30 | [Mean annual earnings by sex, economic activity and educational attainment](https://ec.europa.eu/eurostat/databrowser/product/view/earn_ses18_30?lang=en&category=labour.earn.earn_ses2018.earn_ses18_an) |
